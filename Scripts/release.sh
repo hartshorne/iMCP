@@ -9,7 +9,7 @@ BUILD_NUMBER="${BUILD_NUMBER:-}"
 SCHEME="${SCHEME:-iMCP}"
 CONFIGURATION="${CONFIGURATION:-Release}"
 DESTINATION="${DESTINATION:-platform=macOS}"
-PROJECT_FILE="${PROJECT_FILE:-${APP_NAME}.xcodeproj/project.pbxproj}"
+PROJECT_FILE="${PROJECT_FILE:-project.yml}"
 DIST_DIR="${DIST_DIR:-dist}"
 ARCHIVE_PATH="${ARCHIVE_PATH:-${DIST_DIR}/${APP_NAME}.xcarchive}"
 EXPORT_DIR="${EXPORT_DIR:-${DIST_DIR}/export}"
@@ -51,7 +51,7 @@ Environment:
   SCHEME            Xcode scheme for build check (default: iMCP)
   CONFIGURATION     Build configuration for build check (default: Release)
   DESTINATION       Build destination for build check (default: platform=macOS)
-  PROJECT_FILE      Xcode project file (default: ${APP_NAME}.xcodeproj/project.pbxproj)
+  PROJECT_FILE      XcodeGen project file (default: project.yml)
   DIST_DIR          Output directory for artifacts (default: dist)
   ARCHIVE_PATH      Archive path (default: dist/${APP_NAME}.xcarchive)
   EXPORT_DIR        Export path for the signed app (default: dist/export)
@@ -105,6 +105,10 @@ require_version() {
     echo "VERSION is required for releases." >&2
     exit 1
   fi
+  if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+    echo "Invalid VERSION format: ${VERSION} (expected semver, e.g. 1.2.3)" >&2
+    exit 1
+  fi
 }
 
 require_clean_tree() {
@@ -118,6 +122,13 @@ ensure_dist_dir() {
   mkdir -p "${DIST_DIR}"
 }
 
+ensure_xcodeproj() {
+  if [[ ! -f "iMCP.xcodeproj/project.pbxproj" ]]; then
+    echo "Generating Xcode project..."
+    xcodegen generate
+  fi
+}
+
 resolve_bundle_id() {
   if [[ -n "${BUNDLE_ID}" ]]; then
     return 0
@@ -125,13 +136,11 @@ resolve_bundle_id() {
   if [[ ! -f "${PROJECT_FILE}" ]]; then
     return 1
   fi
-  while IFS= read -r line; do
-    if [[ "${line}" == *"PRODUCT_BUNDLE_IDENTIFIER ="* && "${line}" != *"imcp-server"* ]]; then
-      BUNDLE_ID="${line#*PRODUCT_BUNDLE_IDENTIFIER = }"
-      BUNDLE_ID="${BUNDLE_ID%;}"
-      return 0
-    fi
-  done < "${PROJECT_FILE}"
+  # Extract PRODUCT_BUNDLE_IDENTIFIER from the iMCP target in project.yml
+  BUNDLE_ID="$(grep -A 100 '^  iMCP:' "${PROJECT_FILE}" | grep 'PRODUCT_BUNDLE_IDENTIFIER:' | head -1 | sed 's/.*PRODUCT_BUNDLE_IDENTIFIER: *//' | tr -d ' ')"
+  if [[ -n "${BUNDLE_ID}" ]]; then
+    return 0
+  fi
   return 1
 }
 
@@ -222,31 +231,20 @@ bump_version() {
   local resolved_build_number="${BUILD_NUMBER}"
   if [[ -z "${resolved_build_number}" ]]; then
     # Find the current build number and increment it if not provided.
-    resolved_build_number="0"
-    while IFS= read -r line; do
-      if [[ "${line}" =~ CURRENT_PROJECT_VERSION\ =\ ([0-9]+)\; ]]; then
-        resolved_build_number="${BASH_REMATCH[1]}"
-        break
-      fi
-    done < "${PROJECT_FILE}"
+    resolved_build_number="$(grep 'CURRENT_PROJECT_VERSION:' "${PROJECT_FILE}" | head -1 | sed 's/.*CURRENT_PROJECT_VERSION: *"//' | sed 's/".*//' | tr -d ' ' || true)"
+    resolved_build_number="${resolved_build_number:-0}"
     resolved_build_number="$((resolved_build_number + 1))"
   fi
 
   echo "Setting MARKETING_VERSION to ${VERSION}"
   echo "Setting CURRENT_PROJECT_VERSION to ${resolved_build_number}"
-  # Replace both version fields in the project file without agvtool.
-  local tmp_file
-  tmp_file="$(mktemp)"
-  while IFS= read -r line; do
-    if [[ "${line}" == *"MARKETING_VERSION ="* ]]; then
-      printf '%s\n' "${line%%MARKETING_VERSION = *}MARKETING_VERSION = ${VERSION};" >> "${tmp_file}"
-    elif [[ "${line}" == *"CURRENT_PROJECT_VERSION ="* ]]; then
-      printf '%s\n' "${line%%CURRENT_PROJECT_VERSION = *}CURRENT_PROJECT_VERSION = ${resolved_build_number};" >> "${tmp_file}"
-    else
-      printf '%s\n' "${line}" >> "${tmp_file}"
-    fi
-  done < "${PROJECT_FILE}"
-  mv "${tmp_file}" "${PROJECT_FILE}"
+  # Replace version fields in project.yml
+  sed -i '' "s/MARKETING_VERSION: .*/MARKETING_VERSION: \"${VERSION}\"/" "${PROJECT_FILE}"
+  sed -i '' "s/CURRENT_PROJECT_VERSION: .*/CURRENT_PROJECT_VERSION: \"${resolved_build_number}\"/" "${PROJECT_FILE}"
+
+  # Regenerate the Xcode project
+  echo "Regenerating Xcode project..."
+  xcodegen generate
 }
 
 build_zip() {
@@ -258,12 +256,14 @@ build_zip() {
 }
 
 build_check() {
+  ensure_xcodeproj
   echo "Checking release build (scheme: ${SCHEME}, configuration: ${CONFIGURATION})"
   xcodebuild -quiet -scheme "${SCHEME}" -configuration "${CONFIGURATION}" -destination "${DESTINATION}" build
   resolve_app_bundle
 }
 
 archive_app() {
+  ensure_xcodeproj
   ensure_dist_dir
   echo "Archiving app to ${ARCHIVE_PATH}"
   xcodebuild -quiet -scheme "${SCHEME}" -configuration "${CONFIGURATION}" -destination "generic/platform=macOS" archive -archivePath "${ARCHIVE_PATH}"

@@ -9,7 +9,7 @@ private let messagesDatabasePath = "/Users/\(NSUserName())/Library/Messages/chat
 private let messagesDatabaseBookmarkKey: String = "me.mattt.iMCP.messagesDatabaseBookmark"
 private let defaultLimit = 30
 
-final class MessageService: NSObject, Service, NSOpenSavePanelDelegate {
+final class MessageService: NSObject, Service, NSOpenSavePanelDelegate, @unchecked Sendable {
     static let shared = MessageService()
 
     func activate() async throws {

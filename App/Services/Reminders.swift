@@ -1,11 +1,11 @@
-import EventKit
+@preconcurrency import EventKit
 import Foundation
 import OSLog
 import Ontology
 
 private let log = Logger.service("reminders")
 
-final class RemindersService: Service {
+final class RemindersService: Service, @unchecked Sendable {
     private let eventStore = EKEventStore()
 
     static let shared = RemindersService()
@@ -172,9 +172,10 @@ final class RemindersService: Service {
             }
 
             // Fetch reminders
-            let reminders = try await withCheckedThrowingContinuation { continuation in
+            let reminders: [EKReminder] = try await withCheckedThrowingContinuation { continuation in
                 self.eventStore.fetchReminders(matching: predicate) { fetchedReminders in
-                    continuation.resume(returning: fetchedReminders ?? [])
+                    nonisolated(unsafe) let result = fetchedReminders ?? []
+                    continuation.resume(returning: result)
                 }
             }
 

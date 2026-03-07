@@ -1,15 +1,15 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import AppKit
 import Foundation
 import OSLog
 import ObjectiveC
 import Ontology
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 import SwiftUI
 
 private let log = Logger.service("capture")
 
-final class CaptureService: NSObject, Service {
+final class CaptureService: NSObject, Service, @unchecked Sendable {
     static let shared = CaptureService()
 
     private var captureSession: AVCaptureSession?
@@ -247,7 +247,7 @@ final class CaptureService: NSObject, Service {
 
             return try await withCheckedThrowingContinuation { continuation in
                 let resumeGate = ResumeGate()
-                let resumeOnce: (Result<Value, Error>, (() async -> Void)?) async -> Void = {
+                let resumeOnce: @Sendable (Result<Value, Error>, (@Sendable () async -> Void)?) async -> Void = {
                     result,
                     cleanup in
                     guard await resumeGate.shouldResume() else { return }
@@ -578,7 +578,7 @@ final class CaptureService: NSObject, Service {
 
             return try await withCheckedThrowingContinuation { continuation in
                 let resumeGate = ResumeGate()
-                let resumeOnce: (Result<Value, Error>, (() async -> Void)?) async -> Void = {
+                let resumeOnce: @Sendable (Result<Value, Error>, (@Sendable () async -> Void)?) async -> Void = {
                     result,
                     _ in
                     guard await resumeGate.shouldResume() else { return }

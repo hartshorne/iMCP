@@ -4,7 +4,7 @@ import OSLog
 
 private let log = Logger.service("utilities")
 
-final class UtilitiesService: Service {
+final class UtilitiesService: Service, @unchecked Sendable {
     static let shared = UtilitiesService()
 
     var tools: [Tool] {

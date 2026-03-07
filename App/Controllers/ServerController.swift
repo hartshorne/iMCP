@@ -13,6 +13,7 @@ import class Foundation.JSONDecoder
 import class Foundation.JSONEncoder
 
 private let serviceType = "_mcp._tcp"
+private let serviceName = "iMCP"
 private let serviceDomain = "local."
 
 private let log = Logger.server
@@ -432,6 +433,8 @@ actor MCPConnectionManager {
         self.transport = NetworkTransport(
             connection: connection,
             logger: nil,
+            // Work around a swift-sdk continuation crash in reconnection handling.
+            reconnectionConfig: .disabled,
             bufferConfig: .unlimited
         )
 
@@ -445,7 +448,7 @@ actor MCPConnectionManager {
         )
     }
 
-    func start(approvalHandler: @escaping (MCP.Client.Info) async -> Bool) async throws {
+    func start(approvalHandler: @escaping @Sendable (MCP.Client.Info) async -> Bool) async throws {
         do {
             log.notice("Starting MCP server for connection: \(self.connectionID)")
             try await server.start(transport: transport) { [weak self] clientInfo, capabilities in
@@ -456,11 +459,10 @@ actor MCPConnectionManager {
                 // Request user approval for the connection.
                 let approved = await approvalHandler(clientInfo)
                 log.info(
-                    "Approval result for connection \(connectionID): \(approved ? "Approved" : "Denied")"
+                    "Approval result for connection \(self.connectionID): \(approved ? "Approved" : "Denied")"
                 )
 
                 if !approved {
-                    await self.parentManager.removeConnection(self.connectionID)
                     throw MCPError.connectionClosed
                 }
             }
@@ -555,7 +557,12 @@ actor NetworkDiscoveryManager {
 
         // Listen and advertise via Bonjour.
         self.listener = try NWListener(using: parameters)
-        self.listener.service = NWListener.Service(type: serviceType, domain: serviceDomain)
+        self.listener.service = NWListener.Service(
+            name: serviceName,
+            type: serviceType,
+            domain: serviceDomain,
+            txtRecord: nil
+        )
 
         // Browser is used for monitoring and diagnostics.
         self.browser = NWBrowser(
@@ -601,7 +608,12 @@ actor NetworkDiscoveryManager {
         }
 
         let newListener: NWListener = try NWListener(using: parameters)
-        let service = NWListener.Service(type: self.serviceType, domain: self.serviceDomain)
+        let service = NWListener.Service(
+            name: serviceName,
+            type: self.serviceType,
+            domain: self.serviceDomain,
+            txtRecord: nil
+        )
         newListener.service = service
 
         if let currentStateHandler = listener.stateUpdateHandler {
@@ -860,7 +872,7 @@ actor ServerNetworkManager {
 
             var tools: [MCP.Tool] = []
             if await self.isEnabledState {
-                for service in await self.services {
+                for service in self.services {
                     let serviceId = String(describing: type(of: service))
 
                     // Read binding on the actor for consistency.
@@ -904,7 +916,7 @@ actor ServerNetworkManager {
                 )
             }
 
-            for service in await self.services {
+            for service in self.services {
                 let serviceId = String(describing: type(of: service))
 
                 // Read binding on the actor for consistency.

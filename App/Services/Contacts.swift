@@ -1,4 +1,4 @@
-import Contacts
+@preconcurrency import Contacts
 import Foundation
 import JSONSchema
 import OSLog
@@ -77,12 +77,12 @@ private let contactProperties: OrderedDictionary<String, JSONSchema> = [
     ),
 ]
 
-final class ContactsService: Service {
+final class ContactsService: Service, @unchecked Sendable {
     private let contactStore = CNContactStore()
 
     static let shared = ContactsService()
 
-    private func runContactStore<T>(_ operation: @escaping () throws -> T) async throws -> T {
+    private func runContactStore<T: Sendable>(_ operation: @escaping @Sendable () throws -> T) async throws -> T {
         try await Task(priority: .utility) {
             try operation()
         }.value
@@ -214,9 +214,10 @@ final class ContactsService: Service {
                 ? predicates[0]
                 : NSCompoundPredicate(andPredicateWithSubpredicates: predicates)
 
+            nonisolated(unsafe) let sendablePredicate = finalPredicate
             let contacts = try await self.runContactStore {
                 try self.contactStore.unifiedContacts(
-                    matching: finalPredicate,
+                    matching: sendablePredicate,
                     keysToFetch: contactKeys
                 )
             }
@@ -255,7 +256,7 @@ final class ContactsService: Service {
             }
 
             // Fetch the mutable copy of the contact
-            let predicate = CNContact.predicateForContacts(withIdentifiers: [identifier])
+            nonisolated(unsafe) let predicate = CNContact.predicateForContacts(withIdentifiers: [identifier])
             let contact =
                 try await self.runContactStore {
                     try self.contactStore.unifiedContacts(matching: predicate, keysToFetch: contactKeys)

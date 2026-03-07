@@ -1,0 +1,206 @@
+name: iMCP
+options:
+  bundleIdPrefix: co.dododo
+  deploymentTarget:
+    macOS: "26.0"
+  xcodeVersion: "2620"
+  generateEmptyDirectories: false
+  groupSortPosition: none
+  createIntermediateGroups: true
+  defaultConfig: Release
+
+settings:
+  base:
+    DEAD_CODE_STRIPPING: YES
+    GCC_TREAT_WARNINGS_AS_ERRORS: YES
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+    SWIFT_VERSION: "6.0"
+    CLANG_CXX_LANGUAGE_STANDARD: "gnu++20"
+    GCC_C_LANGUAGE_STANDARD: gnu17
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+  configs:
+    Debug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG $(inherited)"
+      SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+      DEBUG_INFORMATION_FORMAT: dwarf
+      ENABLE_TESTABILITY: YES
+      GCC_DYNAMIC_NO_PIC: NO
+      GCC_OPTIMIZATION_LEVEL: "0"
+      GCC_PREPROCESSOR_DEFINITIONS:
+        - "DEBUG=1"
+        - "$(inherited)"
+      MTL_ENABLE_DEBUG_INFO: INCLUDE_SOURCE
+      ONLY_ACTIVE_ARCH: YES
+    Release:
+      SWIFT_COMPILATION_MODE: wholemodule
+      DEBUG_INFORMATION_FORMAT: "dwarf-with-dsym"
+      ENABLE_NS_ASSERTIONS: NO
+      MTL_ENABLE_DEBUG_INFO: NO
+
+packages:
+  swift-log:
+    url: https://github.com/apple/swift-log
+    from: "1.6.2"
+  Ontology:
+    url: https://github.com/loopwork-ai/Ontology
+    from: "0.8.0"
+  madrid:
+    url: https://github.com/loopwork-ai/madrid
+    from: "0.1.0"
+  swift-service-lifecycle:
+    url: https://github.com/swift-server/swift-service-lifecycle
+    from: "2.7.0"
+  swift-sdk:
+    url: https://github.com/modelcontextprotocol/swift-sdk
+    revision: "106167bad12cd8d004b0cbfcec8211c5408794d8"
+  JSONSchema:
+    url: https://github.com/loopwork-ai/JSONSchema.git
+    from: "1.3.0"
+  MenuBarExtraAccess:
+    url: https://github.com/orchetect/MenuBarExtraAccess
+    from: "1.2.1"
+
+targets:
+  iMCP:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+        excludes:
+          - Info.plist
+    dependencies:
+      - package: swift-sdk
+        product: MCP
+      - package: Ontology
+      - package: madrid
+        product: TypedStream
+      - package: madrid
+        product: iMessage
+      - package: JSONSchema
+      - package: MenuBarExtraAccess
+      - target: imcp-server
+        embed: true
+        codeSign: true
+        copy:
+          destination: executables
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: co.dododo.iMCP
+        PRODUCT_NAME: "$(TARGET_NAME)"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: App/Info.plist
+        CURRENT_PROJECT_VERSION: "10"
+        MARKETING_VERSION: "1.4.0"
+        SUPPORTED_PLATFORMS: macosx
+        SUPPORTS_MACCATALYST: NO
+        SDKROOT: macosx
+        SWIFT_EMIT_LOC_STRINGS: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        AUTOMATION_APPLE_EVENTS: YES
+        ENABLE_APP_SANDBOX: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_INCOMING_NETWORK_CONNECTIONS: YES
+        ENABLE_OUTGOING_NETWORK_CONNECTIONS: YES
+        ENABLE_PREVIEWS: YES
+        ENABLE_RESOURCE_ACCESS_AUDIO_INPUT: YES
+        ENABLE_RESOURCE_ACCESS_CALENDARS: YES
+        ENABLE_RESOURCE_ACCESS_CAMERA: YES
+        ENABLE_RESOURCE_ACCESS_CONTACTS: YES
+        ENABLE_RESOURCE_ACCESS_LOCATION: YES
+        ENABLE_USER_SELECTED_FILES: readwrite
+        INFOPLIST_KEY_CFBundleDisplayName: iMCP
+        INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.developer-tools"
+        INFOPLIST_KEY_LSUIElement: YES
+        INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "iMCP needs access to provide event information to the MCP server."
+        INFOPLIST_KEY_NSCameraUsageDescription: "iMCP needs access to the camera to take pictures for the MCP server."
+        INFOPLIST_KEY_NSContactsUsageDescription: "iMCP needs access to provide contact information to the MCP server."
+        INFOPLIST_KEY_NSHumanReadableCopyright: "© 2026 dododo, LLC. All rights reserved."
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "iMCP uses the local network to connect to the MCP server."
+        INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription: "iMCP needs access to provide location information to the MCP server."
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "iMCP needs access to provide location information to the MCP server."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "iMCP needs access to the microphone to record audio for the MCP server."
+        INFOPLIST_KEY_NSRemindersFullAccessUsageDescription: "iMCP needs access to provide reminders information to the MCP server."
+        LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
+      configs:
+        Debug:
+          CODE_SIGNING_ALLOWED: NO
+          CODE_SIGNING_REQUIRED: NO
+          CODE_SIGN_ENTITLEMENTS: App/App.Debug.entitlements
+          CODE_SIGN_IDENTITY: "-"
+          CODE_SIGN_STYLE: Manual
+          DEVELOPMENT_TEAM: ""
+          PROVISIONING_PROFILE_SPECIFIER: ""
+        Release:
+          CODE_SIGNING_ALLOWED: NO
+          CODE_SIGNING_REQUIRED: NO
+          CODE_SIGN_ENTITLEMENTS: App/App.entitlements
+          CODE_SIGN_IDENTITY: "-"
+          CODE_SIGN_STYLE: Manual
+          DEVELOPMENT_TEAM: ""
+          PROVISIONING_PROFILE_SPECIFIER: ""
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "WEATHERKIT_AVAILABLE $(inherited)"
+          ENABLE_RESOURCE_ACCESS_BLUETOOTH: NO
+          ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY: NO
+          ENABLE_RESOURCE_ACCESS_PRINTING: NO
+          ENABLE_RESOURCE_ACCESS_USB: NO
+  imcp-server:
+    type: tool
+    platform: macOS
+    sources:
+      - path: CLI
+    dependencies:
+      - package: swift-sdk
+        product: MCP
+      - package: swift-log
+        product: Logging
+      - package: swift-service-lifecycle
+        product: ServiceLifecycle
+      - package: swift-service-lifecycle
+        product: UnixSignals
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: "com.loopwork.imcp-server"
+        PRODUCT_NAME: "$(TARGET_NAME)"
+        SDKROOT: macosx
+        SKIP_INSTALL: YES
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: "-"
+          CODE_SIGN_STYLE: Automatic
+          DEVELOPMENT_TEAM: R7AYS6Z734
+        Release:
+          CODE_SIGN_IDENTITY: "-"
+          CODE_SIGN_STYLE: Manual
+          DEVELOPMENT_TEAM: ""
+          PROVISIONING_PROFILE_SPECIFIER: ""
+
+aggregateTargets:
+  install-iMCP:
+    targets:
+      - iMCP
+    buildScripts:
+      - name: Install Release App To Applications
+        basedOnDependencyAnalysis: false
+        script: |
+          set -euo pipefail
+
+          if [[ "${CONFIGURATION}" != "Release" ]]; then
+            echo "install-iMCP must run with Release configuration (got: ${CONFIGURATION})." >&2
+            exit 1
+          fi
+
+          SRC_APP="${BUILT_PRODUCTS_DIR}/iMCP.app"
+          DEST_APP="/Applications/iMCP.app"
+
+          if [[ ! -d "${SRC_APP}" ]]; then
+            echo "Missing built app at ${SRC_APP}" >&2
+            exit 1
+          fi
+
+          if [[ -e "${DEST_APP}" || -L "${DEST_APP}" ]]; then
+            rm -rf "${DEST_APP}"
+          fi
+
+          /usr/bin/ditto "${SRC_APP}" "${DEST_APP}"
+          echo "Installed ${DEST_APP}"

@@ -9,7 +9,7 @@ private let defaultSearchRadius: CLLocationDistance = 5000  // Default 5km
 private let defaultSearchLimit: Int = 10
 private let defaultMapImageSize: CGSize = CGSize(width: 1024, height: 1024)
 
-final class MapsService: NSObject, Service {
+final class MapsService: NSObject, Service, @unchecked Sendable {
     private let searchCompleter = MKLocalSearchCompleter()
     private var searchResults: [MKLocalSearchCompletion] = []
     private var searchContinuation: CheckedContinuation<[MKLocalSearchCompletion], Error>?
@@ -385,17 +385,15 @@ final class MapsService: NSObject, Service {
                 )
             }
 
-            // Create origin and destination placemarks
-            let originPlacemark = MKPlacemark(
-                coordinate: CLLocationCoordinate2D(latitude: originLat, longitude: originLng)
+            // Create origin and destination map items
+            let originItem = MKMapItem(
+                location: CLLocation(latitude: originLat, longitude: originLng),
+                address: nil
             )
-            let destPlacemark = MKPlacemark(
-                coordinate: CLLocationCoordinate2D(latitude: destLat, longitude: destLng)
+            let destinationItem = MKMapItem(
+                location: CLLocation(latitude: destLat, longitude: destLng),
+                address: nil
             )
-
-            // Create map items from placemarks
-            let originItem = MKMapItem(placemark: originPlacemark)
-            let destinationItem = MKMapItem(placemark: destPlacemark)
 
             // Set up directions request
             let directionsRequest = MKDirections.Request()
@@ -654,11 +652,11 @@ final class MapsService: NSObject, Service {
             let lng = coordinates["longitude"]?.doubleValue
         {
 
-            // Create placemark and map item from coordinates
-            let placemark = MKPlacemark(
-                coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng)
+            // Create map item from coordinates
+            return MKMapItem(
+                location: CLLocation(latitude: lat, longitude: lng),
+                address: nil
             )
-            return MKMapItem(placemark: placemark)
         } else {
             throw NSError(
                 domain: "MapsServiceError",
@@ -675,7 +673,8 @@ final class MapsService: NSObject, Service {
 extension MapsService: MKLocalSearchCompleterDelegate {
     func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
         self.searchResults = completer.results
-        self.searchContinuation?.resume(returning: completer.results)
+        nonisolated(unsafe) let results = completer.results
+        self.searchContinuation?.resume(returning: results)
         self.searchContinuation = nil
     }
 
