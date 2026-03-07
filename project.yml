@@ -132,10 +132,12 @@ targets:
           DEVELOPMENT_TEAM: ""
           PROVISIONING_PROFILE_SPECIFIER: ""
         Release:
+          CODE_SIGNING_ALLOWED: NO
+          CODE_SIGNING_REQUIRED: NO
           CODE_SIGN_ENTITLEMENTS: App/App.entitlements
-          CODE_SIGN_IDENTITY: "Apple Development"
-          CODE_SIGN_STYLE: Automatic
-          DEVELOPMENT_TEAM: TTY35UM57S
+          CODE_SIGN_IDENTITY: "-"
+          CODE_SIGN_STYLE: Manual
+          DEVELOPMENT_TEAM: ""
           PROVISIONING_PROFILE_SPECIFIER: ""
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: "WEATHERKIT_AVAILABLE $(inherited)"
           ENABLE_RESOURCE_ACCESS_BLUETOOTH: NO
@@ -168,10 +170,9 @@ targets:
           CODE_SIGN_STYLE: Automatic
           DEVELOPMENT_TEAM: R7AYS6Z734
         Release:
-          CODE_SIGN_IDENTITY: "Developer ID Application"
+          CODE_SIGN_IDENTITY: "-"
           CODE_SIGN_STYLE: Manual
           DEVELOPMENT_TEAM: ""
-          "DEVELOPMENT_TEAM[sdk=macosx*]": R7AYS6Z734
           PROVISIONING_PROFILE_SPECIFIER: ""
 
 aggregateTargets:
