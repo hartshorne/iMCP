@@ -7,7 +7,7 @@ import Ontology
 
 private let log = Logger.service("calendar")
 
-final class CalendarService: Service {
+final class CalendarService: Service, @unchecked Sendable {
     private let eventStore = EKEventStore()
 
     static let shared = CalendarService()

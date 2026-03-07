@@ -4,7 +4,7 @@ import OSLog
 /// Logging configuration following Apple's recommended practices
 extension Logger {
     /// Using bundle identifier as recommended by Apple for a unique identifier
-    private static var subsystem = Bundle.main.bundleIdentifier ?? "me.mattt.iMCP"
+    private nonisolated(unsafe) static var subsystem = Bundle.main.bundleIdentifier ?? "me.mattt.iMCP"
 
     /// Server-related logs including connection management and state changes
     static let server = Logger(subsystem: subsystem, category: "server")

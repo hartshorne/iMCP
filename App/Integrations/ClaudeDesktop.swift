@@ -16,7 +16,7 @@ private let jsonEncoder: JSONEncoder = {
 
 private let jsonDecoder = JSONDecoder()
 
-enum ClaudeDesktop {
+@MainActor enum ClaudeDesktop {
     struct Config: Codable {
         struct MCPServer: Codable {
             var command: String
@@ -79,7 +79,7 @@ enum ClaudeDesktop {
     }
 }
 
-private func getSecurityScopedConfigURL() throws -> URL? {
+@MainActor private func getSecurityScopedConfigURL() throws -> URL? {
     log.debug("Attempting to get security-scoped config URL")
     guard let bookmarkData = UserDefaults.standard.data(forKey: configBookmarkKey) else {
         log.debug("No bookmark data found in UserDefaults")
@@ -103,7 +103,7 @@ private func getSecurityScopedConfigURL() throws -> URL? {
     return url
 }
 
-private func saveSecurityScopedAccess(for url: URL) throws {
+@MainActor private func saveSecurityScopedAccess(for url: URL) throws {
     log.debug("Creating security-scoped bookmark for URL: \(url.path)")
     let bookmarkData = try url.bookmarkData(
         options: .withSecurityScope,
@@ -114,7 +114,7 @@ private func saveSecurityScopedAccess(for url: URL) throws {
     log.debug("Successfully saved security-scoped bookmark")
 }
 
-private func loadConfig() throws -> ([String: Value], ClaudeDesktop.Config.MCPServer) {
+@MainActor private func loadConfig() throws -> ([String: Value], ClaudeDesktop.Config.MCPServer) {
     log.debug("Creating default iMCP server configuration")
     let imcpServer = ClaudeDesktop.Config.MCPServer(
         command: Bundle.main.bundleURL
@@ -192,7 +192,7 @@ private func loadConfig() throws -> ([String: Value], ClaudeDesktop.Config.MCPSe
     return (finalConfig, imcpServer)
 }
 
-private func updateConfig(
+@MainActor private func updateConfig(
     _ config: [String: Value],
     upserting imcpServer: ClaudeDesktop.Config.MCPServer
 )
@@ -273,7 +273,7 @@ private func updateConfig(
     }
 }
 
-private func writeConfig(_ config: [String: Value], to url: URL) throws {
+@MainActor private func writeConfig(_ config: [String: Value], to url: URL) throws {
     log.debug("Creating directory if needed: \(url.deletingLastPathComponent().path)")
     try FileManager.default.createDirectory(
         at: url.deletingLastPathComponent(),

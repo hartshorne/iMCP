@@ -4,7 +4,7 @@ import OSLog
 
 private let log = Logger.service("shortcuts")
 
-final class ShortcutsService: Service {
+final class ShortcutsService: Service, @unchecked Sendable {
     static let shared = ShortcutsService()
 
     private let shortcutsPath = "/usr/bin/shortcuts"

@@ -6,7 +6,7 @@ import WeatherKit
 
 private let log = Logger.service("weather")
 
-final class WeatherService: Service {
+final class WeatherService: Service, @unchecked Sendable {
     static let shared = WeatherService()
 
     private let weatherService = WeatherKit.WeatherService.shared

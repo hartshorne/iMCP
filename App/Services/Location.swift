@@ -1,11 +1,12 @@
 import CoreLocation
 import Foundation
+import MapKit
 import OSLog
 import Ontology
 
 private let log = Logger.service("location")
 
-final class LocationService: NSObject, Service, CLLocationManagerDelegate {
+final class LocationService: NSObject, Service, CLLocationManagerDelegate, @unchecked Sendable {
     private let locationManager = {
         let manager = CLLocationManager()
         manager.activityType = .other
@@ -204,76 +205,48 @@ final class LocationService: NSObject, Service, CLLocationManagerDelegate {
                 )
             }
 
-            return try await withCheckedThrowingContinuation {
-                (continuation: CheckedContinuation<Value, Error>) in
-                let geocoder = CLGeocoder()
-
-                geocoder.geocodeAddressString(address) { placemarks, error in
-                    if let error = error {
-                        continuation.resume(throwing: error)
-                        return
-                    }
-
-                    guard let placemark = placemarks?.first, let location = placemark.location
-                    else {
-                        continuation.resume(
-                            throwing: NSError(
-                                domain: "LocationServiceError",
-                                code: 4,
-                                userInfo: [
-                                    NSLocalizedDescriptionKey: "No location found for address"
-                                ]
-                            )
-                        )
-                        return
-                    }
-
-                    var result: [String: Value] = [
-                        "@context": .string("https://schema.org"),
-                        "@type": .string("Place"),
-                        "geo": .object([
-                            "@type": .string("GeoCoordinates"),
-                            "latitude": .double(location.coordinate.latitude),
-                            "longitude": .double(location.coordinate.longitude),
-                        ]),
-                    ]
-
-                    // Add address components if available
-                    if let name = placemark.name {
-                        result["name"] = .string(name)
-                    }
-
-                    var addressComponents: [String: Value] = [
-                        "@type": .string("PostalAddress")
-                    ]
-
-                    if let thoroughfare = placemark.thoroughfare {
-                        addressComponents["streetAddress"] = .string(thoroughfare)
-                    }
-
-                    if let locality = placemark.locality {
-                        addressComponents["addressLocality"] = .string(locality)
-                    }
-
-                    if let administrativeArea = placemark.administrativeArea {
-                        addressComponents["addressRegion"] = .string(administrativeArea)
-                    }
-
-                    if let postalCode = placemark.postalCode {
-                        addressComponents["postalCode"] = .string(postalCode)
-                    }
-
-                    if let country = placemark.country {
-                        addressComponents["addressCountry"] = .string(country)
-                    }
-
-                    if addressComponents.count > 1 {  // More than just the @type
-                        result["address"] = .object(addressComponents)
-                    }
-
-                    continuation.resume(returning: .object(result))
-                }
+            guard let request = MKGeocodingRequest(addressString: address) else {
+                throw NSError(
+                    domain: "LocationServiceError",
+                    code: 4,
+                    userInfo: [NSLocalizedDescriptionKey: "Invalid address for geocoding"]
+                )
             }
+            let mapItems = try await request.mapItems
+
+            guard let mapItem = mapItems.first else {
+                throw NSError(
+                    domain: "LocationServiceError",
+                    code: 4,
+                    userInfo: [
+                        NSLocalizedDescriptionKey: "No location found for address"
+                    ]
+                )
+            }
+
+            let location = mapItem.location
+            var result: [String: Value] = [
+                "@context": .string("https://schema.org"),
+                "@type": .string("Place"),
+                "geo": .object([
+                    "@type": .string("GeoCoordinates"),
+                    "latitude": .double(location.coordinate.latitude),
+                    "longitude": .double(location.coordinate.longitude),
+                ]),
+            ]
+
+            if let name = mapItem.name {
+                result["name"] = .string(name)
+            }
+
+            if let fullAddress = mapItem.address?.fullAddress {
+                result["address"] = .object([
+                    "@type": .string("PostalAddress"),
+                    "streetAddress": .string(fullAddress),
+                ])
+            }
+
+            return Value.object(result)
         }
 
         Tool(
@@ -303,76 +276,48 @@ final class LocationService: NSObject, Service, CLLocationManagerDelegate {
                 )
             }
 
-            return try await withCheckedThrowingContinuation {
-                (continuation: CheckedContinuation<Value, Error>) in
-                let location = CLLocation(latitude: latitude, longitude: longitude)
-                let geocoder = CLGeocoder()
-
-                geocoder.reverseGeocodeLocation(location) { placemarks, error in
-                    if let error = error {
-                        continuation.resume(throwing: error)
-                        return
-                    }
-
-                    guard let placemark = placemarks?.first else {
-                        continuation.resume(
-                            throwing: NSError(
-                                domain: "LocationServiceError",
-                                code: 6,
-                                userInfo: [
-                                    NSLocalizedDescriptionKey: "No address found for location"
-                                ]
-                            )
-                        )
-                        return
-                    }
-
-                    var result: [String: Value] = [
-                        "@context": .string("https://schema.org"),
-                        "@type": .string("Place"),
-                        "geo": .object([
-                            "@type": .string("GeoCoordinates"),
-                            "latitude": .double(latitude),
-                            "longitude": .double(longitude),
-                        ]),
-                    ]
-
-                    // Add address components if available
-                    if let name = placemark.name {
-                        result["name"] = .string(name)
-                    }
-
-                    var addressComponents: [String: Value] = [
-                        "@type": .string("PostalAddress")
-                    ]
-
-                    if let thoroughfare = placemark.thoroughfare {
-                        addressComponents["streetAddress"] = .string(thoroughfare)
-                    }
-
-                    if let locality = placemark.locality {
-                        addressComponents["addressLocality"] = .string(locality)
-                    }
-
-                    if let administrativeArea = placemark.administrativeArea {
-                        addressComponents["addressRegion"] = .string(administrativeArea)
-                    }
-
-                    if let postalCode = placemark.postalCode {
-                        addressComponents["postalCode"] = .string(postalCode)
-                    }
-
-                    if let country = placemark.country {
-                        addressComponents["addressCountry"] = .string(country)
-                    }
-
-                    if addressComponents.count > 1 {  // More than just the @type
-                        result["address"] = .object(addressComponents)
-                    }
-
-                    continuation.resume(returning: .object(result))
-                }
+            let location = CLLocation(latitude: latitude, longitude: longitude)
+            guard let request = MKReverseGeocodingRequest(location: location) else {
+                throw NSError(
+                    domain: "LocationServiceError",
+                    code: 6,
+                    userInfo: [NSLocalizedDescriptionKey: "Invalid coordinates for reverse geocoding"]
+                )
             }
+            let mapItems = try await request.mapItems
+
+            guard let mapItem = mapItems.first else {
+                throw NSError(
+                    domain: "LocationServiceError",
+                    code: 6,
+                    userInfo: [
+                        NSLocalizedDescriptionKey: "No address found for location"
+                    ]
+                )
+            }
+
+            var result: [String: Value] = [
+                "@context": .string("https://schema.org"),
+                "@type": .string("Place"),
+                "geo": .object([
+                    "@type": .string("GeoCoordinates"),
+                    "latitude": .double(latitude),
+                    "longitude": .double(longitude),
+                ]),
+            ]
+
+            if let name = mapItem.name {
+                result["name"] = .string(name)
+            }
+
+            if let fullAddress = mapItem.address?.fullAddress {
+                result["address"] = .object([
+                    "@type": .string("PostalAddress"),
+                    "streetAddress": .string(fullAddress),
+                ])
+            }
+
+            return Value.object(result)
         }
     }
 

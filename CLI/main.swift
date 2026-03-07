@@ -7,12 +7,15 @@ import SystemPackage
 import struct Foundation.Data
 import class Foundation.RunLoop
 
-var log = Logger(label: "me.mattt.iMCP.server") { StreamLogHandler.standardError(label: $0) }
-#if DEBUG
-    log.logLevel = .debug
-#else
-    log.logLevel = .warning
-#endif
+let log: Logger = {
+    var logger = Logger(label: "me.mattt.iMCP.server") { StreamLogHandler.standardError(label: $0) }
+    #if DEBUG
+        logger.logLevel = .debug
+    #else
+        logger.logLevel = .warning
+    #endif
+    return logger
+}()
 
 // Network setup
 let serviceType = "_mcp._tcp"
@@ -117,7 +120,7 @@ actor StdioProxy {
                 do {
                     try await self.handleStdinToNetwork(bufferSize: stdinBufferSize)
                 } catch {
-                    await log.error("Stdin handler failed: \(error)")
+                    log.error("Stdin handler failed: \(error)")
                     throw error
                 }
             }
@@ -127,14 +130,14 @@ actor StdioProxy {
                 do {
                     try await self.handleNetworkToStdout(bufferSize: networkBufferSize)
                 } catch {
-                    await log.error("Network handler failed: \(error)")
+                    log.error("Network handler failed: \(error)")
                     throw error
                 }
             }
 
             // Wait for any task to complete (or fail)
             try await group.next()
-            await log.debug("A task completed, cancelling remaining tasks")
+            log.debug("A task completed, cancelling remaining tasks")
 
             // If we get here, one of the tasks completed or failed
             // Cancel all remaining tasks
@@ -160,12 +163,12 @@ actor StdioProxy {
     ) async {
         switch state {
         case .ready:
-            await log.debug("Connection established to \(endpoint)")
+            log.debug("Connection established to \(endpoint)")
             if await shouldResume(connectionState: connectionState) {
                 continuation?.resume()
             }
         case .failed(let error):
-            await log.debug("Connection failed: \(error)")
+            log.debug("Connection failed: \(error)")
             if let continuation = continuation,
                 await shouldResume(connectionState: connectionState)
             {
@@ -173,7 +176,7 @@ actor StdioProxy {
             }
             await stop()
         case .cancelled:
-            await log.debug("Connection cancelled")
+            log.debug("Connection cancelled")
             if let continuation = continuation,
                 await shouldResume(connectionState: connectionState)
             {
@@ -181,13 +184,13 @@ actor StdioProxy {
             }
             await stop()
         case .waiting(let error):
-            await log.debug("Connection waiting: \(error)")
+            log.debug("Connection waiting: \(error)")
         case .preparing:
-            await log.debug("Connection preparing...")
+            log.debug("Connection preparing...")
         case .setup:
-            await log.debug("Connection setup...")
+            log.debug("Connection setup...")
         @unknown default:
-            await log.debug("Unknown connection state")
+            log.debug("Unknown connection state")
         }
     }
 
@@ -220,13 +223,13 @@ actor StdioProxy {
         while true {
             // Check connection state at the beginning of each loop iteration
             guard isRunning, let connection = self.connection else {
-                await log.debug("Connection no longer active, stopping stdin handler")
+                log.debug("Connection no longer active, stopping stdin handler")
                 throw StdioProxyError.connectionClosed
             }
 
             // Also check connection state
             if connection.state != .ready && connection.state != .preparing {
-                await log.debug(
+                log.debug(
                     "Connection state changed to \(connection.state), stopping stdin handler"
                 )
                 throw StdioProxyError.connectionClosed
@@ -240,7 +243,7 @@ actor StdioProxy {
 
                 if bytesRead == 0 {
                     // EOF reached
-                    await log.debug("EOF reached on stdin, stopping stdin handler")
+                    log.debug("EOF reached on stdin, stopping stdin handler")
                     break
                 }
 
@@ -271,9 +274,9 @@ actor StdioProxy {
                             )
                         }
 
-                        await log.debug("Sent \(pendingData.count) bytes to network")
+                        log.debug("Sent \(pendingData.count) bytes to network")
                     } else if isOnlyWhitespace && !pendingData.isEmpty {
-                        await log.trace(
+                        log.trace(
                             "Skipping send of \(pendingData.count) whitespace-only bytes"
                         )
                     }
@@ -287,12 +290,12 @@ actor StdioProxy {
                     continue
                 }
 
-                await log.error("Error in stdin handler: \(error)")
+                log.error("Error in stdin handler: \(error)")
                 throw error
             }
         }
 
-        await log.debug("Stdin handler task completed")
+        log.debug("Stdin handler task completed")
     }
 
     /// Handles forwarding data from the network to stdout
@@ -304,13 +307,13 @@ actor StdioProxy {
         while true {
             // Check connection state at the beginning of each loop iteration
             guard isRunning, let connection = self.connection else {
-                await log.debug("Connection no longer active, stopping network handler")
+                log.debug("Connection no longer active, stopping network handler")
                 throw StdioProxyError.connectionClosed
             }
 
             // Also check connection state
             if connection.state != .ready && connection.state != .preparing {
-                await log.debug(
+                log.debug(
                     "Connection state changed to \(connection.state), stopping network handler"
                 )
                 throw StdioProxyError.connectionClosed
@@ -323,7 +326,7 @@ actor StdioProxy {
                 {
                     // If we've had too many empty reads, consider it a timeout
                     if consecutiveEmptyReads > maxConsecutiveEmptyReads * 10 {
-                        await log.warning(
+                        log.warning(
                             "Network read timed out after \(consecutiveEmptyReads) consecutive empty reads"
                         )
                         throw StdioProxyError.networkTimeout
@@ -359,14 +362,14 @@ actor StdioProxy {
                 // Check for and filter out heartbeat messages using MCP.NetworkTransport.Heartbeat
                 // Assuming MCP module and NetworkTransport.Heartbeat are available
                 if NetworkTransport.Heartbeat.isHeartbeat(processedData) {
-                    await log.debug(
+                    log.debug(
                         "Heartbeat signature detected in received network data using MCP definition."
                     )
 
                     // Try to parse a full heartbeat. MCP.NetworkTransport.Heartbeat.from(data:) checks for minimum length internally.
                     if let heartbeat = NetworkTransport.Heartbeat.from(data: processedData) {
                         let heartbeatLength = heartbeat.rawValue.count  // This should typically be 12
-                        await log.debug(
+                        log.debug(
                             "Full MCP heartbeat message (\(heartbeatLength) bytes) received from network, skipping output."
                         )
                         // Remove the full heartbeat from the data
@@ -376,7 +379,7 @@ actor StdioProxy {
                         // This means we have the magic bytes but not the full message (e.g., data length < 12 but >= 4).
                         let expectedHeartbeatLength = MCP.NetworkTransport.Heartbeat().rawValue
                             .count  // Get expected length (12)
-                        await log.debug(
+                        log.debug(
                             "Partial MCP heartbeat message (<\(expectedHeartbeatLength) bytes) received, discarding this chunk to prevent garbled output."
                         )
                         processedData = Data()  // Discard the chunk
@@ -396,7 +399,7 @@ actor StdioProxy {
                 } else {
                     // Reset counter when we get actual data (not just a heartbeat)
                     consecutiveEmptyReads = 0
-                    await log.debug(
+                    log.debug(
                         "Received \(processedData.count) bytes of application data from network"
                     )
                 }
@@ -421,7 +424,7 @@ actor StdioProxy {
                         }
 
                         if bytesWritten < remainingDataToWrite.count {
-                            await log.debug(
+                            log.debug(
                                 "Partial write: \(bytesWritten) of \(remainingDataToWrite.count) bytes"
                             )
                             // Remove the bytes that were written
@@ -439,7 +442,7 @@ actor StdioProxy {
                 }
             } catch let error as NWError where error.errorCode == 96 {
                 // Handle "No message available on STREAM" error
-                await log.debug("Network read yielded no data, waiting...")
+                log.debug("Network read yielded no data, waiting...")
                 consecutiveEmptyReads += 1
                 try await Task.sleep(for: .milliseconds(100))
             } catch {
@@ -448,7 +451,7 @@ actor StdioProxy {
                     nwError.errorCode == 57  // Socket is not connected
                         || nwError.errorCode == 54  // Connection reset by peer
                 {
-                    await log.debug("Connection closed by peer: \(error)")
+                    log.debug("Connection closed by peer: \(error)")
                     throw StdioProxyError.connectionClosed
                 }
 
@@ -456,7 +459,7 @@ actor StdioProxy {
                     throw error
                 }
 
-                await log.error("Error in network handler: \(error)")
+                log.error("Error in network handler: \(error)")
                 throw error
             }
         }
@@ -477,7 +480,7 @@ actor MCPService: Service {
     func run() async throws {
         while true {
             do {
-                await log.info("Starting Bonjour service discovery...")
+                log.info("Starting Bonjour service discovery...")
 
                 let browser = NWBrowser(
                     for: .bonjour(type: serviceType, domain: nil),
@@ -497,7 +500,7 @@ actor MCPService: Service {
 
                         // If we haven't found a service by now, resume with an error
                         if await connectionState.checkAndSetResumed() {
-                            await log.error("Bonjour service discovery timed out after 30 seconds")
+                            log.error("Bonjour service discovery timed out after 30 seconds")
                             continuation.resume(
                                 throwing: MCPError.internalError("Service discovery timeout")
                             )
@@ -509,29 +512,29 @@ actor MCPService: Service {
                         Task {
                             switch state {
                             case .failed(let error):
-                                await log.error("Browser failed: \(error)")
+                                log.error("Browser failed: \(error)")
                                 if await connectionState.checkAndSetResumed() {
                                     timeoutTask.cancel()
                                     browser.cancel()
                                     continuation.resume(throwing: error)
                                 }
                             case .ready:
-                                await log.info("Browser is ready and searching for services")
+                                log.info("Browser is ready and searching for services")
                             case .waiting(let error):
-                                await log.warning("Browser is waiting: \(error)")
+                                log.warning("Browser is waiting: \(error)")
                             default:
-                                await log.debug("Browser state changed: \(state)")
+                                log.debug("Browser state changed: \(state)")
                             }
                         }
                     }
 
                     browser.browseResultsChangedHandler = { results, changes in
                         Task {
-                            await log.debug("Found \(results.count) Bonjour services")
+                            log.debug("Found \(results.count) Bonjour services")
 
                             // Log all discovered services for debugging
                             for (index, result) in results.enumerated() {
-                                await log.debug("Service \(index + 1): \(result.endpoint)")
+                                log.debug("Service \(index + 1): \(result.endpoint)")
                             }
 
                             // If we have results, select the most appropriate one
@@ -546,13 +549,13 @@ actor MCPService: Service {
                                 if !imcpServices.isEmpty {
                                     // Prefer services with iMCP in the description
                                     selectedService = imcpServices.first!
-                                    await log.info(
+                                    log.info(
                                         "Selected iMCP service: \(selectedService.endpoint)"
                                     )
                                 } else {
                                     // Fall back to the first available service
                                     selectedService = results.first!
-                                    await log.info(
+                                    log.info(
                                         "No specific iMCP service found, using: \(selectedService.endpoint)"
                                     )
                                 }
@@ -560,7 +563,7 @@ actor MCPService: Service {
                                 if await connectionState.checkAndSetResumed() {
                                     timeoutTask.cancel()
                                     browser.cancel()
-                                    await log.info("Selected endpoint: \(selectedService.endpoint)")
+                                    log.info("Selected endpoint: \(selectedService.endpoint)")
                                     continuation.resume(returning: selectedService.endpoint)
                                 }
                             }
@@ -568,12 +571,12 @@ actor MCPService: Service {
                     }
 
                     Task {
-                        await log.info("Starting Bonjour browser to discover MCP services...")
+                        log.info("Starting Bonjour browser to discover MCP services...")
                     }
                     browser.start(queue: .main)
                 }
 
-                await log.info("Creating connection to endpoint...")
+                log.info("Creating connection to endpoint...")
 
                 // Create the proxy
                 let proxy = StdioProxy(
@@ -590,20 +593,20 @@ actor MCPService: Service {
                     switch error {
                     // Removed stdinTimeout case as it's no longer thrown
                     // case .stdinTimeout:
-                    //     await log.info("Stdin timed out, will reconnect...")
+                    //     log.info("Stdin timed out, will reconnect...")
                     //     try await Task.sleep(for: .seconds(1))
                     //     continue
                     case .networkTimeout:
-                        await log.info("Network timed out, will reconnect...")
+                        log.info("Network timed out, will reconnect...")
                         try await Task.sleep(for: .seconds(1))
                         continue
                     case .connectionClosed:
-                        await log.critical("Connection closed, terminating...")
+                        log.critical("Connection closed, terminating...")
                         return
                     }
                 } catch let error as NWError where error.errorCode == 54 || error.errorCode == 57 {
                     // Handle connection reset by peer (54) or socket not connected (57)
-                    await log.critical("Network connection terminated: \(error), shutting down...")
+                    log.critical("Network connection terminated: \(error), shutting down...")
                     return
                 } catch {
                     // Rethrow other errors to be handled by the outer catch block
@@ -611,8 +614,8 @@ actor MCPService: Service {
                 }
             } catch {
                 // Handle all other errors with retry
-                await log.error("Connection error: \(error)")
-                await log.info("Will retry connection in 5 seconds...")
+                log.error("Connection error: \(error)")
+                log.info("Will retry connection in 5 seconds...")
                 try await Task.sleep(for: .seconds(5))
             }
         }

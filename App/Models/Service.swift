@@ -1,5 +1,4 @@
-@preconcurrency
-protocol Service {
+protocol Service: Sendable {
     @ToolBuilder var tools: [Tool] { get }
 
     var isActivated: Bool { get async }

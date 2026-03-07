@@ -37,6 +37,12 @@ jobs:
                   restore-keys: |
                       ${{ runner.os }}-xcode-${{ matrix.xcode }}-derived-
 
+            - name: Install XcodeGen
+              run: brew install xcodegen
+
+            - name: Generate Xcode Project
+              run: xcodegen generate
+
             - name: Lint
               run: swift format lint --strict --recursive .
 

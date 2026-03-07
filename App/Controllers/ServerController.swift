@@ -445,7 +445,7 @@ actor MCPConnectionManager {
         )
     }
 
-    func start(approvalHandler: @escaping (MCP.Client.Info) async -> Bool) async throws {
+    func start(approvalHandler: @escaping @Sendable (MCP.Client.Info) async -> Bool) async throws {
         do {
             log.notice("Starting MCP server for connection: \(self.connectionID)")
             try await server.start(transport: transport) { [weak self] clientInfo, capabilities in
@@ -456,7 +456,7 @@ actor MCPConnectionManager {
                 // Request user approval for the connection.
                 let approved = await approvalHandler(clientInfo)
                 log.info(
-                    "Approval result for connection \(connectionID): \(approved ? "Approved" : "Denied")"
+                    "Approval result for connection \(self.connectionID): \(approved ? "Approved" : "Denied")"
                 )
 
                 if !approved {
@@ -860,7 +860,7 @@ actor ServerNetworkManager {
 
             var tools: [MCP.Tool] = []
             if await self.isEnabledState {
-                for service in await self.services {
+                for service in self.services {
                     let serviceId = String(describing: type(of: service))
 
                     // Read binding on the actor for consistency.
@@ -904,7 +904,7 @@ actor ServerNetworkManager {
                 )
             }
 
-            for service in await self.services {
+            for service in self.services {
                 let serviceId = String(describing: type(of: service))
 
                 // Read binding on the actor for consistency.
