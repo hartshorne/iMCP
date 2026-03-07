@@ -123,7 +123,7 @@ ensure_dist_dir() {
 }
 
 ensure_xcodeproj() {
-  if [[ ! -d "iMCP.xcodeproj" ]]; then
+  if [[ ! -f "iMCP.xcodeproj/project.pbxproj" ]]; then
     echo "Generating Xcode project..."
     xcodegen generate
   fi
@@ -231,7 +231,7 @@ bump_version() {
   local resolved_build_number="${BUILD_NUMBER}"
   if [[ -z "${resolved_build_number}" ]]; then
     # Find the current build number and increment it if not provided.
-    resolved_build_number="$(grep 'CURRENT_PROJECT_VERSION:' "${PROJECT_FILE}" | head -1 | sed 's/.*CURRENT_PROJECT_VERSION: *"//' | sed 's/".*//' | tr -d ' ')"
+    resolved_build_number="$(grep 'CURRENT_PROJECT_VERSION:' "${PROJECT_FILE}" | head -1 | sed 's/.*CURRENT_PROJECT_VERSION: *"//' | sed 's/".*//' | tr -d ' ' || true)"
     resolved_build_number="${resolved_build_number:-0}"
     resolved_build_number="$((resolved_build_number + 1))"
   fi
