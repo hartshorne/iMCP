@@ -173,3 +173,33 @@ targets:
           DEVELOPMENT_TEAM: ""
           "DEVELOPMENT_TEAM[sdk=macosx*]": R7AYS6Z734
           PROVISIONING_PROFILE_SPECIFIER: ""
+
+aggregateTargets:
+  install-iMCP:
+    targets:
+      - iMCP
+    buildScripts:
+      - name: Install Release App To Applications
+        basedOnDependencyAnalysis: false
+        script: |
+          set -euo pipefail
+
+          if [[ "${CONFIGURATION}" != "Release" ]]; then
+            echo "install-iMCP must run with Release configuration (got: ${CONFIGURATION})." >&2
+            exit 1
+          fi
+
+          SRC_APP="${BUILT_PRODUCTS_DIR}/iMCP.app"
+          DEST_APP="/Applications/iMCP.app"
+
+          if [[ ! -d "${SRC_APP}" ]]; then
+            echo "Missing built app at ${SRC_APP}" >&2
+            exit 1
+          fi
+
+          if [[ -e "${DEST_APP}" || -L "${DEST_APP}" ]]; then
+            rm -rf "${DEST_APP}"
+          fi
+
+          /usr/bin/ditto "${SRC_APP}" "${DEST_APP}"
+          echo "Installed ${DEST_APP}"

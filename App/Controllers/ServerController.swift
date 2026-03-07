@@ -13,6 +13,7 @@ import class Foundation.JSONDecoder
 import class Foundation.JSONEncoder
 
 private let serviceType = "_mcp._tcp"
+private let serviceName = "iMCP"
 private let serviceDomain = "local."
 
 private let log = Logger.server
@@ -432,6 +433,8 @@ actor MCPConnectionManager {
         self.transport = NetworkTransport(
             connection: connection,
             logger: nil,
+            // Work around a swift-sdk continuation crash in reconnection handling.
+            reconnectionConfig: .disabled,
             bufferConfig: .unlimited
         )
 
@@ -460,7 +463,6 @@ actor MCPConnectionManager {
                 )
 
                 if !approved {
-                    await self.parentManager.removeConnection(self.connectionID)
                     throw MCPError.connectionClosed
                 }
             }
@@ -555,7 +557,12 @@ actor NetworkDiscoveryManager {
 
         // Listen and advertise via Bonjour.
         self.listener = try NWListener(using: parameters)
-        self.listener.service = NWListener.Service(type: serviceType, domain: serviceDomain)
+        self.listener.service = NWListener.Service(
+            name: serviceName,
+            type: serviceType,
+            domain: serviceDomain,
+            txtRecord: nil
+        )
 
         // Browser is used for monitoring and diagnostics.
         self.browser = NWBrowser(
@@ -601,7 +608,12 @@ actor NetworkDiscoveryManager {
         }
 
         let newListener: NWListener = try NWListener(using: parameters)
-        let service = NWListener.Service(type: self.serviceType, domain: self.serviceDomain)
+        let service = NWListener.Service(
+            name: serviceName,
+            type: self.serviceType,
+            domain: self.serviceDomain,
+            txtRecord: nil
+        )
         newListener.service = service
 
         if let currentStateHandler = listener.stateUpdateHandler {

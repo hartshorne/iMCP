@@ -19,6 +19,7 @@ let log: Logger = {
 
 // Network setup
 let serviceType = "_mcp._tcp"
+let serviceDomain = "local."
 let parameters = NWParameters.tcp
 parameters.acceptLocalOnly = true
 parameters.includePeerToPeer = false
@@ -27,12 +28,32 @@ if let tcpOptions = parameters.defaultProtocolStack.internetProtocol as? NWProto
     tcpOptions.version = .v4
 }
 
-// Create browser at top level
-let browser = NWBrowser(
-    for: .bonjour(type: serviceType, domain: nil),
-    using: parameters
-)
-log.info("Created Bonjour browser for service type: \(serviceType)")
+private func normalizeBonjourDomain(_ domain: String) -> String {
+    var normalizedDomain = domain.lowercased()
+    if normalizedDomain.hasSuffix(".") {
+        normalizedDomain.removeLast()
+    }
+    return normalizedDomain
+}
+
+private func localMCPServiceName(from endpoint: NWEndpoint) -> String? {
+    guard case let .service(name: name, type: type, domain: domain, interface: _) = endpoint,
+        type == serviceType,
+        normalizeBonjourDomain(domain) == normalizeBonjourDomain(serviceDomain)
+    else {
+        return nil
+    }
+
+    return name
+}
+
+private func isLikelyIMCPService(_ endpoint: NWEndpoint) -> Bool {
+    guard let serviceName = localMCPServiceName(from: endpoint) else {
+        return false
+    }
+
+    return serviceName.lowercased().contains("imcp")
+}
 
 actor ConnectionState {
     private var hasResumed = false
@@ -472,6 +493,10 @@ enum StdioProxyError: Swift.Error {
     case connectionClosed
 }
 
+enum MCPServiceTermination: Swift.Error {
+    case clientDisconnected
+}
+
 // Create MCPService class to manage lifecycle
 actor MCPService: Service {
     private var browser: NWBrowser?
@@ -480,10 +505,10 @@ actor MCPService: Service {
     func run() async throws {
         while true {
             do {
-                log.info("Starting Bonjour service discovery...")
+                log.info("Starting Bonjour service discovery for \(serviceType) on \(serviceDomain)")
 
                 let browser = NWBrowser(
-                    for: .bonjour(type: serviceType, domain: nil),
+                    for: .bonjour(type: serviceType, domain: serviceDomain),
                     using: parameters
                 )
                 self.browser = browser
@@ -530,48 +555,54 @@ actor MCPService: Service {
 
                     browser.browseResultsChangedHandler = { results, changes in
                         Task {
-                            log.debug("Found \(results.count) Bonjour services")
+                            log.debug(
+                                "Found \(results.count) Bonjour services (changes: \(changes.count))"
+                            )
 
                             // Log all discovered services for debugging
                             for (index, result) in results.enumerated() {
                                 log.debug("Service \(index + 1): \(result.endpoint)")
                             }
 
-                            // If we have results, select the most appropriate one
-                            if !results.isEmpty {
-                                // First, try to find a service with "iMCP" in the endpoint description
-                                let imcpServices = results.filter {
-                                    String(describing: $0.endpoint).contains("iMCP")
-                                }
+                            let localMCPServices = results.filter {
+                                localMCPServiceName(from: $0.endpoint) != nil
+                            }
 
-                                let selectedService: NWBrowser.Result
+                            if localMCPServices.isEmpty {
+                                return
+                            }
 
-                                if !imcpServices.isEmpty {
-                                    // Prefer services with iMCP in the description
-                                    selectedService = imcpServices.first!
-                                    log.info(
-                                        "Selected iMCP service: \(selectedService.endpoint)"
-                                    )
-                                } else {
-                                    // Fall back to the first available service
-                                    selectedService = results.first!
-                                    log.info(
-                                        "No specific iMCP service found, using: \(selectedService.endpoint)"
-                                    )
-                                }
+                            let selectedService =
+                                localMCPServices.first(where: { isLikelyIMCPService($0.endpoint) })
+                                ?? (localMCPServices.count == 1 ? localMCPServices.first : nil)
 
-                                if await connectionState.checkAndSetResumed() {
-                                    timeoutTask.cancel()
-                                    browser.cancel()
-                                    log.info("Selected endpoint: \(selectedService.endpoint)")
-                                    continuation.resume(returning: selectedService.endpoint)
-                                }
+                            guard let selectedService else {
+                                log.warning(
+                                    "Found \(localMCPServices.count) local MCP services, but none matched iMCP by name. Waiting for iMCP service."
+                                )
+                                return
+                            }
+
+                            if let serviceName = localMCPServiceName(from: selectedService.endpoint) {
+                                log.info(
+                                    "Selected Bonjour service '\(serviceName)' at \(selectedService.endpoint)"
+                                )
+                            } else {
+                                log.info("Selected endpoint: \(selectedService.endpoint)")
+                            }
+
+                            if await connectionState.checkAndSetResumed() {
+                                timeoutTask.cancel()
+                                browser.cancel()
+                                continuation.resume(returning: selectedService.endpoint)
                             }
                         }
                     }
 
                     Task {
-                        log.info("Starting Bonjour browser to discover MCP services...")
+                        log.info(
+                            "Starting Bonjour browser to discover MCP services on \(serviceDomain)..."
+                        )
                     }
                     browser.start(queue: .main)
                 }
@@ -601,17 +632,19 @@ actor MCPService: Service {
                         try await Task.sleep(for: .seconds(1))
                         continue
                     case .connectionClosed:
-                        log.critical("Connection closed, terminating...")
-                        return
+                        log.info("Connection closed by client or app. Exiting...")
+                        throw MCPServiceTermination.clientDisconnected
                     }
                 } catch let error as NWError where error.errorCode == 54 || error.errorCode == 57 {
                     // Handle connection reset by peer (54) or socket not connected (57)
-                    log.critical("Network connection terminated: \(error), shutting down...")
-                    return
+                    log.info("Network connection terminated (\(error)). Exiting...")
+                    throw MCPServiceTermination.clientDisconnected
                 } catch {
                     // Rethrow other errors to be handled by the outer catch block
                     throw error
                 }
+            } catch MCPServiceTermination.clientDisconnected {
+                throw MCPServiceTermination.clientDisconnected
             } catch {
                 // Handle all other errors with retry
                 log.error("Connection error: \(error)")
@@ -637,4 +670,8 @@ let lifecycle = ServiceGroup(
     )
 )
 
-try await lifecycle.run()
+do {
+    try await lifecycle.run()
+} catch MCPServiceTermination.clientDisconnected {
+    log.info("Client disconnected, shutting down iMCP server process")
+}
