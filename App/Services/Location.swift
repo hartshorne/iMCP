@@ -16,7 +16,7 @@ private func structuredAddress(from mapItem: MKMapItem) -> [String: Value]? {
             as? CNPostalAddress
     else { return nil }
     var components: [String: Value] = [
-        "@type": .string("PostalAddress"),
+        "@type": .string("PostalAddress")
     ]
     if !postal.street.isEmpty {
         components["streetAddress"] = .string(postal.street)
