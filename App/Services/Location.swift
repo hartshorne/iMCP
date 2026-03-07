@@ -1,3 +1,4 @@
+import Contacts
 import CoreLocation
 import Foundation
 import MapKit
@@ -5,6 +6,38 @@ import OSLog
 import Ontology
 
 private let log = Logger.service("location")
+
+private func structuredAddress(from mapItem: MKMapItem) -> [String: Value]? {
+    // MKAddress only exposes fullAddress/shortAddress. Use the deprecated placemark.postalAddress
+    // via ObjC runtime to get structured components until MKAddress adds them.
+    guard let placemark = mapItem.perform(Selector(("placemark")))?.takeUnretainedValue(),
+        placemark.responds(to: Selector(("postalAddress"))),
+        let postal = placemark.perform(Selector(("postalAddress")))?.takeUnretainedValue()
+            as? CNPostalAddress
+    else { return nil }
+    var components: [String: Value] = [
+        "@type": .string("PostalAddress"),
+    ]
+    if !postal.street.isEmpty {
+        components["streetAddress"] = .string(postal.street)
+    }
+    if !postal.city.isEmpty {
+        components["addressLocality"] = .string(postal.city)
+    }
+    if !postal.state.isEmpty {
+        components["addressRegion"] = .string(postal.state)
+    }
+    if !postal.postalCode.isEmpty {
+        components["postalCode"] = .string(postal.postalCode)
+    }
+    if !postal.country.isEmpty {
+        components["addressCountry"] = .string(postal.country)
+    }
+    if components.count > 1 {
+        return components
+    }
+    return nil
+}
 
 final class LocationService: NSObject, Service, CLLocationManagerDelegate, @unchecked Sendable {
     private let locationManager = {
@@ -239,7 +272,9 @@ final class LocationService: NSObject, Service, CLLocationManagerDelegate, @unch
                 result["name"] = .string(name)
             }
 
-            if let fullAddress = mapItem.address?.fullAddress {
+            if let address = structuredAddress(from: mapItem) {
+                result["address"] = .object(address)
+            } else if let fullAddress = mapItem.address?.fullAddress {
                 result["address"] = .object([
                     "@type": .string("PostalAddress"),
                     "streetAddress": .string(fullAddress),
@@ -310,7 +345,9 @@ final class LocationService: NSObject, Service, CLLocationManagerDelegate, @unch
                 result["name"] = .string(name)
             }
 
-            if let fullAddress = mapItem.address?.fullAddress {
+            if let address = structuredAddress(from: mapItem) {
+                result["address"] = .object(address)
+            } else if let fullAddress = mapItem.address?.fullAddress {
                 result["address"] = .object([
                     "@type": .string("PostalAddress"),
                     "streetAddress": .string(fullAddress),

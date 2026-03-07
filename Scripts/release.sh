@@ -105,6 +105,10 @@ require_version() {
     echo "VERSION is required for releases." >&2
     exit 1
   fi
+  if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+    echo "Invalid VERSION format: ${VERSION} (expected semver, e.g. 1.2.3)" >&2
+    exit 1
+  fi
 }
 
 require_clean_tree() {
